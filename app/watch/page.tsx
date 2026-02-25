@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { AlertCircle, Loader2, Radio } from 'lucide-react'
 import { useAgoraRTC } from '@/hooks/useAgoraRTC'
 import { VideoContainer } from '@/components/VideoContainer'
+import { LiveChat } from '@/components/LiveChat'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -99,38 +100,46 @@ export default function WatchPage() {
         </div>
 
         {/* Main Content */}
-        <div className="max-w-4xl mx-auto">
-          <div className="bg-card border rounded-lg p-4">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold">Channel 123</h2>
-              {isJoined && isBroadcasterOnline && (
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-muted-foreground">Quality</label>
-                  <Select
-                    value={viewerStreamQuality}
-                    onValueChange={(v) => setViewerStreamQuality(v as 'high' | 'low')}
-                  >
-                    <SelectTrigger className="h-7 text-xs w-28">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="high">High quality</SelectItem>
-                      <SelectItem value="low">Low quality</SelectItem>
-                    </SelectContent>
-                  </Select>
+        <div className="max-w-6xl mx-auto">
+          <div className="flex flex-col lg:flex-row gap-4 items-stretch">
+            {/* Video Panel */}
+            <div className="flex-1 bg-card border rounded-lg p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-semibold">Channel 123</h2>
+                {isJoined && isBroadcasterOnline && (
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-muted-foreground">Quality</label>
+                    <Select
+                      value={viewerStreamQuality}
+                      onValueChange={(v) => setViewerStreamQuality(v as 'high' | 'low')}
+                    >
+                      <SelectTrigger className="h-7 text-xs w-28">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="high">High quality</SelectItem>
+                        <SelectItem value="low">Low quality</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+
+              {isJoined ? (
+                <VideoContainer videoTrack={null} remoteUsers={remoteUsers} isLocal={false} />
+              ) : (
+                <div className="w-full bg-muted rounded-lg flex items-center justify-center h-96">
+                  <p className="text-muted-foreground text-center">
+                    {isLoading ? 'Connecting...' : 'Not connected'}
+                  </p>
                 </div>
               )}
             </div>
 
-            {isJoined ? (
-              <VideoContainer videoTrack={null} remoteUsers={remoteUsers} isLocal={false} />
-            ) : (
-              <div className="w-full bg-muted rounded-lg flex items-center justify-center h-96">
-                <p className="text-muted-foreground text-center">
-                  {isLoading ? 'Connecting...' : 'Not connected'}
-                </p>
-              </div>
-            )}
+            {/* Chat Panel */}
+            <div className="w-full lg:w-80 shrink-0 h-[480px] lg:h-auto">
+              <LiveChat />
+            </div>
           </div>
 
           {/* Info Section */}
