@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 
 const CHANNEL_ID = '123'
 const APP_ID = process.env.NEXT_PUBLIC_AGORA_APP_ID || ''
-const RTM_TOKEN = process.env.NEXT_PUBLIC_AGORA_RTM_TOKEN || null
 
 export interface ChatMessage {
   id: string
@@ -22,6 +21,7 @@ export interface UseAgoraRTMReturn {
   isConnecting: boolean
   error: string | null
   myDisplayName: string
+  disconnect: () => Promise<void>
 }
 
 function generateGuestName(): string {
@@ -33,7 +33,7 @@ function generateUid(): string {
   return `user_${Math.random().toString(36).slice(2, 10)}`
 }
 
-export function useAgoraRTM(): UseAgoraRTMReturn {
+export function useAgoraRTM(token: string | null = null): UseAgoraRTMReturn {
   // Stable uid and display name per mount
   const uidRef = useRef<string>(generateUid())
   const displayNameRef = useRef<string>(generateGuestName())
@@ -44,16 +44,32 @@ export function useAgoraRTM(): UseAgoraRTMReturn {
   const [isConnecting, setIsConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const disconnect = useCallback(async () => {
+    const rtm = rtmRef.current
+    if (rtm) {
+      rtmRef.current = null
+      await rtm.unsubscribe(CHANNEL_ID).catch(() => {})
+      await rtm.logout().catch(() => {})
+    }
+    setIsConnected(false)
+    setIsConnecting(false)
+    setMessages([])
+    setError(null)
+  }, [])
+
   useEffect(() => {
     if (!APP_ID) {
       setError('Agora App ID is not set')
       return
     }
 
+    // Don't auto-connect; only connect when token is provided (even if null = test mode)
+    // The component calls this hook only after the user clicks Connect
     let cancelled = false
 
     const initRTM = async () => {
       try {
+        setError(null)
         setIsConnecting(true)
 
         // Dynamically import to avoid SSR issues
@@ -63,7 +79,7 @@ export function useAgoraRTM(): UseAgoraRTMReturn {
 
         // RTM SDK v2: constructor takes (appId, userId)
         const rtm = new (AgoraRTM as any).RTM(APP_ID, uidRef.current, {
-          ...(RTM_TOKEN ? { token: RTM_TOKEN } : {}),
+          ...(token ? { token } : {}),
           logLevel: 'WARN',
         })
 
@@ -107,7 +123,7 @@ export function useAgoraRTM(): UseAgoraRTMReturn {
           }
         })
 
-        await rtm.login({ token: RTM_TOKEN ?? null })
+        await rtm.login({ token: token ?? null })
 
         if (cancelled) {
           await rtm.logout()
@@ -143,7 +159,7 @@ export function useAgoraRTM(): UseAgoraRTMReturn {
         rtm.logout().catch(() => {})
       }
     }
-  }, [])
+  }, [token])
 
   const sendMessage = useCallback(async (text: string) => {
     const rtm = rtmRef.current
@@ -182,5 +198,6 @@ export function useAgoraRTM(): UseAgoraRTMReturn {
     isConnecting,
     error,
     myDisplayName: displayNameRef.current,
+    disconnect,
   }
 }
