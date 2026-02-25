@@ -123,7 +123,8 @@ export function useAgoraRTM(token: string | null = null): UseAgoraRTMReturn {
           }
         })
 
-        await rtm.login({ token: token ?? null })
+        // When no token: pass empty options (passing { token: null } triggers -10005)
+        await rtm.login(token ? { token } : {})
 
         if (cancelled) {
           await rtm.logout()
