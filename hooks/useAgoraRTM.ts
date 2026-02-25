@@ -21,7 +21,6 @@ export interface UseAgoraRTMReturn {
   isConnecting: boolean
   error: string | null
   myDisplayName: string
-  disconnect: () => Promise<void>
 }
 
 function generateGuestName(): string {
@@ -33,8 +32,17 @@ function generateUid(): string {
   return `user_${Math.random().toString(36).slice(2, 10)}`
 }
 
-export function useAgoraRTM(token: string | null = null): UseAgoraRTMReturn {
-  // Stable uid and display name per mount
+async function fetchRtmToken(uid: string): Promise<string> {
+  const res = await fetch(`/api/rtm-token?uid=${encodeURIComponent(uid)}`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.error || `Token fetch failed (${res.status})`)
+  }
+  const { token } = await res.json()
+  return token as string
+}
+
+export function useAgoraRTM(): UseAgoraRTMReturn {
   const uidRef = useRef<string>(generateUid())
   const displayNameRef = useRef<string>(generateGuestName())
   const rtmRef = useRef<any>(null)
@@ -44,27 +52,12 @@ export function useAgoraRTM(token: string | null = null): UseAgoraRTMReturn {
   const [isConnecting, setIsConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const disconnect = useCallback(async () => {
-    const rtm = rtmRef.current
-    if (rtm) {
-      rtmRef.current = null
-      await rtm.unsubscribe(CHANNEL_ID).catch(() => {})
-      await rtm.logout().catch(() => {})
-    }
-    setIsConnected(false)
-    setIsConnecting(false)
-    setMessages([])
-    setError(null)
-  }, [])
-
   useEffect(() => {
     if (!APP_ID) {
       setError('Agora App ID is not set')
       return
     }
 
-    // Don't auto-connect; only connect when token is provided (even if null = test mode)
-    // The component calls this hook only after the user clicks Connect
     let cancelled = false
 
     const initRTM = async () => {
@@ -72,20 +65,22 @@ export function useAgoraRTM(token: string | null = null): UseAgoraRTMReturn {
         setError(null)
         setIsConnecting(true)
 
-        // Dynamically import to avoid SSR issues
-        const AgoraRTM = (await import('agora-rtm-sdk')).default
-
+        // 1. Fetch a fresh RTM token from the Next.js API route
+        const token = await fetchRtmToken(uidRef.current)
         if (cancelled) return
 
-        // RTM SDK v2: constructor takes (appId, userId)
+        // 2. Load Agora RTM SDK (avoid SSR issues)
+        const AgoraRTM = (await import('agora-rtm-sdk')).default
+        if (cancelled) return
+
+        // 3. Create RTM v2 client
         const rtm = new (AgoraRTM as any).RTM(APP_ID, uidRef.current, {
-          ...(token ? { token } : {}),
+          token,
           logLevel: 'WARN',
         })
-
         rtmRef.current = rtm
 
-        // Listen for incoming channel messages
+        // 4. Incoming channel messages
         rtm.addEventListener('message', (event: any) => {
           if (cancelled) return
           try {
@@ -102,7 +97,6 @@ export function useAgoraRTM(token: string | null = null): UseAgoraRTMReturn {
               },
             ])
           } catch {
-            // Plain text fallback
             setMessages((prev) => [
               ...prev,
               {
@@ -123,21 +117,13 @@ export function useAgoraRTM(token: string | null = null): UseAgoraRTMReturn {
           }
         })
 
-        // When no token: pass empty options (passing { token: null } triggers -10005)
-        await rtm.login(token ? { token } : {})
+        // 5. Login with the server-generated token
+        await rtm.login({ token })
+        if (cancelled) { await rtm.logout(); return }
 
-        if (cancelled) {
-          await rtm.logout()
-          return
-        }
-
+        // 6. Subscribe to channel
         await rtm.subscribe(CHANNEL_ID)
-
-        if (cancelled) {
-          await rtm.unsubscribe(CHANNEL_ID)
-          await rtm.logout()
-          return
-        }
+        if (cancelled) { await rtm.unsubscribe(CHANNEL_ID); await rtm.logout(); return }
 
         setIsConnected(true)
         setIsConnecting(false)
@@ -160,7 +146,7 @@ export function useAgoraRTM(token: string | null = null): UseAgoraRTMReturn {
         rtm.logout().catch(() => {})
       }
     }
-  }, [token])
+  }, [])
 
   const sendMessage = useCallback(async (text: string) => {
     const rtm = rtmRef.current
@@ -174,7 +160,6 @@ export function useAgoraRTM(token: string | null = null): UseAgoraRTMReturn {
 
     try {
       await rtm.publish(CHANNEL_ID, payload)
-
       setMessages((prev) => [
         ...prev,
         {
@@ -199,6 +184,5 @@ export function useAgoraRTM(token: string | null = null): UseAgoraRTMReturn {
     isConnecting,
     error,
     myDisplayName: displayNameRef.current,
-    disconnect,
   }
 }
