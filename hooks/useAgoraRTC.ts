@@ -13,6 +13,16 @@ const CHANNEL_ID = '123'
 const APP_ID = process.env.NEXT_PUBLIC_AGORA_APP_ID || ''
 const TOKEN = process.env.NEXT_PUBLIC_AGORA_TEMP_TOKEN || null
 
+export type VideoQuality = 'low' | 'medium' | 'high' | 'hd'
+export type ViewerStreamQuality = 'high' | 'low'
+
+export const VIDEO_QUALITY_PRESETS: Record<VideoQuality, { label: string; width: number; height: number; frameRate: number; bitrateMax: number }> = {
+  low:    { label: '360p',  width: 640,  height: 360,  frameRate: 15, bitrateMax: 400  },
+  medium: { label: '480p',  width: 854,  height: 480,  frameRate: 15, bitrateMax: 700  },
+  high:   { label: '720p',  width: 1280, height: 720,  frameRate: 30, bitrateMax: 1500 },
+  hd:     { label: '1080p', width: 1920, height: 1080, frameRate: 30, bitrateMax: 3000 },
+}
+
 export interface UseAgoraRTCProps {
   mode: 'broadcaster' | 'viewer'
   onError?: (error: Error) => void
@@ -23,16 +33,21 @@ export interface UseAgoraRTCReturn {
   localVideoTrack: ICameraVideoTrack | null
   localAudioTrack: IMicrophoneAudioTrack | null
   remoteUsers: IAgoraRTCRemoteUser[]
+  viewerCount: number
   isJoined: boolean
   isLoading: boolean
   isMicOn: boolean
   isCameraOn: boolean
   currentCamera: string
   availableCameras: MediaDeviceInfo[]
+  videoQuality: VideoQuality
+  viewerStreamQuality: ViewerStreamQuality
   error: string | null
   toggleMic: () => Promise<void>
   toggleCamera: () => Promise<void>
   switchCamera: (cameraId: string) => Promise<void>
+  setVideoQuality: (quality: VideoQuality) => Promise<void>
+  setViewerStreamQuality: (quality: ViewerStreamQuality) => Promise<void>
   leave: () => Promise<void>
 }
 
@@ -44,12 +59,15 @@ export function useAgoraRTC(props: UseAgoraRTCProps): UseAgoraRTCReturn {
   const audioTrackRef = useRef<IMicrophoneAudioTrack | null>(null)
 
   const [remoteUsers, setRemoteUsers] = useState<IAgoraRTCRemoteUser[]>([])
+  const [viewerCount, setViewerCount] = useState(0)
   const [isJoined, setIsJoined] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isMicOn, setIsMicOn] = useState(true)
   const [isCameraOn, setIsCameraOn] = useState(true)
   const [currentCamera, setCurrentCamera] = useState<string>('')
   const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([])
+  const [videoQuality, setVideoQualityState] = useState<VideoQuality>('high')
+  const [viewerStreamQuality, setViewerStreamQualityState] = useState<ViewerStreamQuality>('high')
   const [error, setError] = useState<string | null>(null)
 
   // Initialize Agora client
@@ -100,8 +118,13 @@ export function useAgoraRTC(props: UseAgoraRTCProps): UseAgoraRTCReturn {
           }
         })
 
+        client.on('user-joined', () => {
+          setViewerCount((prev) => prev + 1)
+        })
+
         client.on('user-left', (user) => {
           setRemoteUsers((prevUsers) => prevUsers.filter((u) => u.uid !== user.uid))
+          setViewerCount((prev) => Math.max(0, prev - 1))
         })
 
         clientRef.current = client
@@ -111,6 +134,8 @@ export function useAgoraRTC(props: UseAgoraRTCProps): UseAgoraRTCReturn {
           await client.join(APP_ID, CHANNEL_ID, TOKEN)
           if (cancelled) return
           setIsJoined(true)
+          // Initialize count with users already in channel
+          setViewerCount(client.remoteUsers.length)
 
           // Create and publish tracks
           const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks()
@@ -125,6 +150,9 @@ export function useAgoraRTC(props: UseAgoraRTCProps): UseAgoraRTCReturn {
           videoTrackRef.current = videoTrack
 
           await client.publish([audioTrack, videoTrack])
+
+          // Enable dual-stream so viewers can switch between high/low quality
+          await client.enableDualStream()
 
           setIsMicOn(true)
           setIsCameraOn(true)
@@ -141,6 +169,8 @@ export function useAgoraRTC(props: UseAgoraRTCProps): UseAgoraRTCReturn {
           await client.join(APP_ID, CHANNEL_ID, TOKEN)
           if (cancelled) return
           setIsJoined(true)
+          // Initialize count with users already in channel
+          setViewerCount(client.remoteUsers.length)
         }
 
         setIsLoading(false)
@@ -211,6 +241,47 @@ export function useAgoraRTC(props: UseAgoraRTCProps): UseAgoraRTCReturn {
     }
   }, [isCameraOn, onError])
 
+  // Set viewer stream quality (high = full stream, low = low-res dual stream)
+  const setViewerStreamQuality = useCallback(
+    async (quality: ViewerStreamQuality) => {
+      if (!clientRef.current) return
+      try {
+        const streamType = quality === 'high' ? 0 : 1
+        for (const user of clientRef.current.remoteUsers) {
+          await clientRef.current.setRemoteVideoStreamType(user.uid, streamType)
+        }
+        setViewerStreamQualityState(quality)
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : 'Failed to set stream quality'
+        setError(errorMsg)
+        onError?.(new Error(errorMsg))
+      }
+    },
+    [onError]
+  )
+
+  // Set video encoder quality
+  const setVideoQuality = useCallback(
+    async (quality: VideoQuality) => {
+      if (!videoTrackRef.current) return
+      try {
+        const preset = VIDEO_QUALITY_PRESETS[quality]
+        await videoTrackRef.current.setEncoderConfiguration({
+          width: preset.width,
+          height: preset.height,
+          frameRate: preset.frameRate,
+          bitrateMax: preset.bitrateMax,
+        })
+        setVideoQualityState(quality)
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : 'Failed to set video quality'
+        setError(errorMsg)
+        onError?.(new Error(errorMsg))
+      }
+    },
+    [onError]
+  )
+
   // Switch camera (front/back)
   const switchCamera = useCallback(
     async (cameraId: string) => {
@@ -260,8 +331,13 @@ export function useAgoraRTC(props: UseAgoraRTCProps): UseAgoraRTCReturn {
     localVideoTrack: videoTrackRef.current,
     localAudioTrack: audioTrackRef.current,
     remoteUsers,
+    viewerCount,
     isJoined,
     isLoading,
+    videoQuality,
+    setVideoQuality,
+    viewerStreamQuality,
+    setViewerStreamQuality,
     isMicOn,
     isCameraOn,
     currentCamera,

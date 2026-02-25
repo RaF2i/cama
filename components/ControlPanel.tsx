@@ -1,6 +1,6 @@
 'use client'
 
-import { Mic, MicOff, Video, VideoOff, Smartphone } from 'lucide-react'
+import { Mic, MicOff, Video, VideoOff, Smartphone, Gauge } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -9,15 +9,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { type VideoQuality, VIDEO_QUALITY_PRESETS } from '@/hooks/useAgoraRTC'
 
 interface ControlPanelProps {
   isMicOn: boolean
   isCameraOn: boolean
   currentCamera: string
   availableCameras: MediaDeviceInfo[]
+  videoQuality: VideoQuality
   onToggleMic: () => Promise<void>
   onToggleCamera: () => Promise<void>
   onSwitchCamera: (cameraId: string) => Promise<void>
+  onSetVideoQuality: (quality: VideoQuality) => Promise<void>
   isLoading?: boolean
 }
 
@@ -26,9 +29,11 @@ export function ControlPanel({
   isCameraOn,
   currentCamera,
   availableCameras,
+  videoQuality,
   onToggleMic,
   onToggleCamera,
   onSwitchCamera,
+  onSetVideoQuality,
   isLoading = false,
 }: ControlPanelProps) {
   return (
@@ -79,6 +84,30 @@ export function ControlPanel({
           </Select>
         </div>
       )}
+
+      <div className="space-y-2">
+        <label className="text-xs font-medium flex items-center gap-1">
+          <Gauge className="w-3 h-3" />
+          Video Quality
+        </label>
+        <Select value={videoQuality} onValueChange={(v) => onSetVideoQuality(v as VideoQuality)} disabled={isLoading}>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select quality" />
+          </SelectTrigger>
+          <SelectContent>
+            {(Object.entries(VIDEO_QUALITY_PRESETS) as [VideoQuality, typeof VIDEO_QUALITY_PRESETS[VideoQuality]][]).map(
+              ([key, preset]) => (
+                <SelectItem key={key} value={key}>
+                  <div className="flex items-center justify-between gap-4 w-full">
+                    <span>{preset.label}</span>
+                    <span className="text-xs text-muted-foreground">{preset.frameRate}fps</span>
+                  </div>
+                </SelectItem>
+              )
+            )}
+          </SelectContent>
+        </Select>
+      </div>
     </div>
   )
 }

@@ -7,6 +7,13 @@ import { useAgoraRTC } from '@/hooks/useAgoraRTC'
 import { VideoContainer } from '@/components/VideoContainer'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 export default function WatchPage() {
   const router = useRouter()
@@ -14,10 +21,13 @@ export default function WatchPage() {
 
   const {
     remoteUsers,
+    viewerCount,
     isJoined,
     isLoading,
     error,
     leave,
+    viewerStreamQuality,
+    setViewerStreamQuality,
   } = useAgoraRTC({
     mode: 'viewer',
     onError: (err) => console.error('Agora Error:', err),
@@ -58,12 +68,18 @@ export default function WatchPage() {
             </div>
           )}
           {isJoined && !isLoading && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-4">
               {isBroadcasterOnline ? (
                 <>
                   <div className="flex items-center gap-2 text-green-600">
                     <Radio className="w-5 h-5 animate-pulse" />
                     <span>Broadcaster is live</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                    <span className="inline-flex items-center gap-1 bg-muted px-2 py-0.5 rounded-full">
+                      <span className="w-2 h-2 bg-blue-500 rounded-full inline-block" />
+                      {viewerCount + 1} watching
+                    </span>
                   </div>
                 </>
               ) : (
@@ -85,7 +101,26 @@ export default function WatchPage() {
         {/* Main Content */}
         <div className="max-w-4xl mx-auto">
           <div className="bg-card border rounded-lg p-4">
-            <h2 className="text-sm font-semibold mb-4">Channel 123</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold">Channel 123</h2>
+              {isJoined && isBroadcasterOnline && (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground">Quality</label>
+                  <Select
+                    value={viewerStreamQuality}
+                    onValueChange={(v) => setViewerStreamQuality(v as 'high' | 'low')}
+                  >
+                    <SelectTrigger className="h-7 text-xs w-28">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="high">High quality</SelectItem>
+                      <SelectItem value="low">Low quality</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
 
             {isJoined ? (
               <VideoContainer videoTrack={null} remoteUsers={remoteUsers} isLocal={false} />
@@ -114,7 +149,10 @@ export default function WatchPage() {
                   </span>
                 </p>
                 <p>
-                  <strong>Viewers:</strong> {remoteUsers.length > 0 ? 'Watching' : 'None yet'}
+                  <strong>Viewers:</strong>{' '}
+                  <span className="text-primary">
+                    {viewerCount + 1} watching
+                  </span>
                 </p>
               </div>
             </div>

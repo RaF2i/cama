@@ -25,10 +25,13 @@ export default function BroadcastPage() {
     isCameraOn,
     currentCamera,
     availableCameras,
+    viewerCount,
+    videoQuality,
     error,
     toggleMic,
     toggleCamera,
     switchCamera,
+    setVideoQuality,
     leave,
   } = useAgoraRTC({
     mode: 'broadcaster',
@@ -71,9 +74,15 @@ export default function BroadcastPage() {
             </div>
           )}
           {isJoined && !isLoading && (
-            <div className="flex items-center gap-2 text-green-600">
-              <div className="w-3 h-3 bg-green-600 rounded-full animate-pulse" />
-              <span>Live - Broadcasting to channel 123</span>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 text-green-600">
+                <div className="w-3 h-3 bg-green-600 rounded-full animate-pulse" />
+                <span>Live - Broadcasting to channel 123</span>
+              </div>
+              <span className="inline-flex items-center gap-1 bg-muted px-2 py-0.5 rounded-full text-sm text-muted-foreground">
+                <span className="w-2 h-2 bg-blue-500 rounded-full inline-block" />
+                {viewerCount} viewer{viewerCount !== 1 ? 's' : ''}
+              </span>
             </div>
           )}
           {error && !isLoading && (
@@ -108,9 +117,11 @@ export default function BroadcastPage() {
                 isCameraOn={isCameraOn}
                 currentCamera={currentCamera}
                 availableCameras={availableCameras}
+                videoQuality={videoQuality}
                 onToggleMic={toggleMic}
                 onToggleCamera={toggleCamera}
                 onSwitchCamera={switchCamera}
+                onSetVideoQuality={setVideoQuality}
                 isLoading={isLoading}
               />
             )}
@@ -147,6 +158,12 @@ export default function BroadcastPage() {
                   <div className="text-xs space-y-1 font-mono">
                     <p>
                       Channel: <span className="text-primary">123</span>
+                    </p>
+                    <p>
+                      Viewers: <span className="text-primary">{viewerCount}</span>
+                    </p>
+                    <p>
+                      Quality: <span className="text-primary">{videoQuality.toUpperCase()}</span>
                     </p>
                     <p>
                       Video: <span className="text-primary">{isCameraOn ? 'On' : 'Off'}</span>
